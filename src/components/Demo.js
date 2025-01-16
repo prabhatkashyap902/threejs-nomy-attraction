@@ -2,6 +2,7 @@ import Stats from 'stats-gl';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { bloom } from 'three/examples/jsm/tsl/display/BloomNode.js';
+import { MeshSurfaceSampler } from 'three/examples/jsm/math/MeshSurfaceSampler.js';
 import {
     Discard,
     Fn,
@@ -67,7 +68,7 @@ class Demo {
 
     params = {
         cursorRadius: 10,
-        baseParticleScale: 0.5,
+        baseParticleScale: 0.2,
         pointerAttractionStrength: 0.3,
         hoverPower: 1,
         hoverDuration: 1,
@@ -136,14 +137,24 @@ class Demo {
                     node.geometry.scale(3, 3, 1);
                     this.amount = node.geometry.attributes.position.array.length / 3;
 
+                    // Use MeshSurfaceSampler to sample positions from the mesh
+            const sampler = new MeshSurfaceSampler(node).build();
+            const sampledPositions = new Float32Array(this.amount * 3); // (x, y, z) for each particle
+                    for (let i = 0; i < this.amount; i++) {
+                        const tempPosition = new Vector3();
+                        sampler.sample(tempPosition);
+                        sampledPositions.set([tempPosition.x, tempPosition.y, tempPosition.z], i * 3);
+                    }
+
+                    // Base positions are now the sampled points
                     this.particlesBasePositionsBuffer = storage(
-                        new StorageInstancedBufferAttribute(node.geometry.attributes.position.array, 3),
+                        new StorageInstancedBufferAttribute(sampledPositions, 3),
                         'vec3',
                         this.amount
                     ).setPBO(true);
 
                     this.particlesPositionsBuffer = storage(
-                        new StorageInstancedBufferAttribute(node.geometry.attributes.position.array, 3),
+                        new StorageInstancedBufferAttribute(sampledPositions.slice(), 3),
                         'vec3',
                         this.amount
                     );
