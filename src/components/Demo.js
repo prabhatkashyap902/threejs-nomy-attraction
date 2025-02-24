@@ -77,12 +77,12 @@ class Demo {
 
         usePostprocessing: true,
 
-        turbFrequency: 5,
+        turbFrequency: 0,
         turbAmplitude: 0,
-        turbOctaves: 10,
-        turbLacunarity: 2.0,
-        turbGain: 10,
-        turbFriction: 1,
+        turbOctaves: 0,
+        turbLacunarity: 0,
+        turbGain: 0,
+        turbFriction: 0,
     };
 
     uniforms = {
@@ -115,7 +115,7 @@ class Demo {
         }
 
         this.controls = new OrbitControls(this.camera, this.canvas);
-        this.controls.enableDamping = true;
+        this.controls.enableDamping = false;
         this.controls.dampingFactor = 0.1;
         this.controls.enabled = matchMedia('(pointer: fine)').matches;
 
@@ -123,7 +123,7 @@ class Demo {
 
         this.scene.backgroundNode = Fn(() => {
             const color = vec3(mx_fractal_noise_vec3(vec3(screenUV, time.mul(0.3)))).toVar();
-            color.mulAssign(0.03);
+            color.mulAssign(0);
             return vec4(color, 1);
         })();
 
@@ -133,13 +133,13 @@ class Demo {
                 if (node instanceof Mesh) {
                     node.geometry.toNonIndexed();
                     node.geometry.center();
-                    // node.geometry.rotateX(-Math.PI / 2);
+                    // node.geometry.rotateX(Math.PI / 2);
                     node.geometry.scale(3, 3, 1);
                     this.amount = node.geometry.attributes.position.array.length / 3;
 
                     // Use MeshSurfaceSampler to sample positions from the mesh
-            const sampler = new MeshSurfaceSampler(node).build();
-            const sampledPositions = new Float32Array(this.amount * 3); // (x, y, z) for each particle
+                    const sampler = new MeshSurfaceSampler(node).build();
+                    const sampledPositions = new Float32Array(this.amount * 3); // (x, y, z) for each particle
                     for (let i = 0; i < this.amount; i++) {
                         const tempPosition = new Vector3();
                         sampler.sample(tempPosition);
@@ -193,18 +193,16 @@ class Demo {
                         const strength = strengthBuffer.element(instanceIndex);
 
                         // velocity
-                        const vel = mx_fractal_noise_vec3(
-                            position.mul(this.params.turbFrequency),
-                            this.params.turbOctaves,
-                            this.params.turbLacunarity,
-                            this.params.turbGain,
-                            this.params.turbAmplitude
-                        ).mul(life.add(0.015));
-                        // Add random upward velocity
-                        const randomUpwardVelocity = Math.sin(Math.PI * instanceIndex / this.amount); // Random value between -0.5 and 0.5 scaled by upward strength
-                        // velocity.y.addAssign(randomUpwardVelocity);
-                        velocity.addAssign(vel);
-                        velocity.mulAssign(float(this.params.turbFriction).oneMinus());
+                        // const vel = mx_fractal_noise_vec3(
+                        //     position.mul(this.params.turbFrequency),
+                        //     this.params.turbOctaves,
+                        //     this.params.turbLacunarity,
+                        //     this.params.turbGain,
+                        //     this.params.turbAmplitude
+                        // ).mul(life.add(1.5));
+                        // // Add random upward velocity
+                        // velocity.addAssign(vel);
+                        // velocity.mulAssign(float(this.params.turbFriction).oneMinus());
 
                         // Cursor based strength
                         const distanceToCursor = this.pointerHandler.uPointer.distance(basePosition);
@@ -221,8 +219,8 @@ class Demo {
 
                         // position.subAssign(pointerAttraction);
 
-                        const radius = 8.0; // Maximum interaction radius
-                        const hardEdge = 5.0; // Inner radius for the "hard circle" effect
+                        const radius = 10.0; // Maximum interaction radius
+                        const hardEdge = 1.0; // Inner radius for the "hard circle" effect
                         
                         // const distanceToCursor = this.pointerHandler.uPointer.distance(basePosition).toVar();
                         
@@ -233,27 +231,22 @@ class Demo {
                         
                         // Check if inside the maximum radius
                         If(distanceToCursor.lessThan(float(radius)), () => {
-                            // Inside the radius, apply attraction
                             const cursorStrength = falloff.smoothstep(0.0, 1.0).mul(this.uniforms.pointerAttractionStrength);
                         
-                            // Update particle strength
-                            strength.assign(
-                                strength.add(cursorStrength).sub(deltaTime.mul(5.0)).clamp(0, 1)
-                            );
+                            // strength.assign(
+                            //     strength.mix(cursorStrength, deltaTime.mul(5.0)).clamp(0, 1) // Faster decay
+                            // );
+                            
                         
-                            // Calculate attraction force
                             const pointerAttractionDirection = normalize(this.pointerHandler.uPointer.sub(position));
                             const pointerAttraction = pointerAttractionDirection.mul(cursorStrength);
-                        
-                            // Apply attraction
+                            
                             position.addAssign(pointerAttraction);
-                        
-                            // Ensure smooth blending near the edge
-                            velocity.mulAssign(falloff); // Gradually reduce velocity near the edge
+                            velocity.mulAssign(falloff);  
                         }, () => {
-                            // Outside the radius, reset position and velocity
+                            strength.assign(0); // Reset when not hovered
                             position.assign(basePosition);
-                            velocity.assign(vec3(0.0, 0.0, 0.0)); // Stop motion completely
+                            velocity.assign(vec3(0.0, 0.0, 0.0)); 
                         });
                         
 
@@ -265,8 +258,8 @@ class Demo {
 
                         // Life
                         const decayFrequency = 0.9;
-                        const distanceDecay = basePosition.distance(position).remapClamp(0, 1, 0.2, 1);
-                        const newLife = life.add(deltaTime.mul(decayFrequency).mul(distanceDecay)).toVar();
+                        const randomDecay = hash(instanceIndex.add(123)).remap(0, 1, 0.8, 1.2);
+                        const newLife = life.add(deltaTime.mul(decayFrequency).mul(randomDecay))
 
                         If(newLife.greaterThan(1), () => {
                             position.assign(basePosition);
@@ -287,21 +280,21 @@ class Demo {
                     material.scaleNode = Fn(() => {
                         const strength = strengthBuffer.element(instanceIndex);
                         const life = this.particlesLifeBuffer.element(instanceIndex);
-
-                        const scale = min(smoothstep(0, 0.1, life), smoothstep(0.7, 1, life).oneMinus());
+                    
+                        const scale = smoothstep(0, 0.1, life);
                         scale.mulAssign(
                             hash(instanceIndex)
                                 .remap(0.5, 1)
                                 .mul(
                                     float(0.3)
                                         .mul(this.uniforms.scale)
-                                        .add(strength.mul(0.3).mul(this.uniforms.contactScale))
+                                        .add(strength.smoothstep(0, 1).mul(0.3).mul(this.uniforms.contactScale))
                                 )
                         );
-
+                    
                         return scale;
                     })();
-
+                    
                     // material.colorNode = Fn(() => {
                     //     const strength = strengthBuffer.element(instanceIndex);
 
@@ -368,59 +361,6 @@ class Demo {
     #destroyEvents() {
         window.removeEventListener('resize', this.onWindowResize);
     }
-
-    // #initTweakPane() {
-    //     this.tweakPane = new Pane({
-    //         title: 'Parameters',
-    //         expanded: matchMedia('(min-width: 1200px)').matches,
-    //     });
-
-    //     this.tweakPane
-    //         .addBinding(this.params, 'cursorRadius', { min: 6, max: 20, step: 0.01 })
-    //         .on('change', (event) => {
-    //             this.uniforms.cursorRadius.value = event.value;
-    //         });
-
-    //     this.tweakPane
-    //         .addBinding(this.params, 'baseParticleScale', { min: 0, max: 3, step: 0.01 })
-    //         .on('change', (event) => {
-    //             this.uniforms.scale.value = event.value;
-    //         });
-
-    //     this.tweakPane
-    //         .addBinding(this.params, 'pointerAttractionStrength', { min: 0, max: 0.3, step: 0.01 })
-    //         .on('change', (event) => {
-    //             this.uniforms.pointerAttractionStrength.value = event.value;
-    //         });
-
-    //     this.tweakPane.addBinding(this.params, 'hoverPower', { min: 0, max: 3, step: 0.01 }).on('change', (event) => {
-    //         this.uniforms.hoverPower.value = event.value;
-    //     });
-
-    //     this.tweakPane
-    //         .addBinding(this.params, 'hoverDuration', { min: 0.1, max: 1, step: 0.01 })
-    //         .on('change', (event) => {
-    //             this.uniforms.hoverDuration.value = 1 / event.value;
-    //         });
-
-    //     this.tweakPane
-    //         .addBinding(this.params, 'wanderingSpeed', { min: 0, max: 0.03, step: 0.0001 })
-    //         .on('change', (event) => {
-    //             this.uniforms.wanderingSpeed.value = event.value;
-    //         });
-
-    //     this.tweakPane
-    //         .addBinding(this.params, 'contactParticleScaleMultiplier', { min: 0, max: 3, step: 0.01 })
-    //         .on('change', (event) => {
-    //             this.uniforms.contactScale.value = event.value;
-    //         });
-
-    //     this.tweakPane.addBinding(this.params, 'usePostprocessing');
-    // }
-
-    // #destroyTweakPane() {
-    //     this.tweakPane?.dispose();
-    // }
 
     async render() {
         this.stats?.update();
